@@ -2,15 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 #nullable disable
 
-using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Text.Encodings.Web;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Xml.Linq;
 using LMS.Models;
 using LMS.Models.LMSModels;
 using Microsoft.AspNetCore.Authentication;
@@ -21,7 +12,19 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Net;
+using System.Text;
+using System.Text.Encodings.Web;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Xml.Linq;
 
 namespace LMS.Areas.Identity.Pages.Account
 {
@@ -182,6 +185,14 @@ namespace LMS.Areas.Identity.Pages.Account
 
         /*******Begin code to modify********/
 
+        // role as an internal int
+        public enum Role
+        {
+          Admin,
+          Professor,
+          Student
+        }
+
         /// <summary>
         /// Create a new user of the LMS with the specified information and add it to the database.
         /// Assigns the user a unique uID consisting of a 'u' followed by 7 digits.
@@ -194,7 +205,51 @@ namespace LMS.Areas.Identity.Pages.Account
         /// <returns>The uID of the new user</returns>
         string CreateNewUser( string firstName, string lastName, DateTime DOB, string departmentAbbrev, string role )
         {
-            return "unknown";
+            List<Admin> admins = new();
+            List<Professor> profs = new();
+            List<Student> students = new();
+
+            var adminQuery = from a in db.Admins select a.UId;
+            var profQuery = from p in db.Professors select p.UId;
+            var studentQuery = from s in db.Students select s.UId;
+            List<string> uids = adminQuery.Concat(profQuery).Concat(studentQuery).ToList();
+            uids = uids.Select((uid) => uid.Substring(1)).ToList();
+            
+            string maxUid = uids.Max();
+            string newUid = maxUid == null ? "u0000001" : "u" + (int.Parse(maxUid) + 1).ToString("D7");
+
+            Role r = GetRole(role);
+            switch(r)
+            {
+            case Role.Admin:
+              db.Admins.Add(new Admin { UId=newUid, FName=firstName, LName=lastName, Dob=DateOnly.FromDateTime(DOB) });
+              break;
+            case Role.Professor:
+              db.Professors.Add(new Professor { UId=newUid, FName=firstName, LName=lastName, Dob=DateOnly.FromDateTime(DOB), Subject=departmentAbbrev });
+              break;
+            case Role.Student:
+              db.Students.Add(new Student { UId=newUid, FName=firstName, LName=lastName, Dob=DateOnly.FromDateTime(DOB), Subject=departmentAbbrev });
+              break;
+            }
+
+            db.SaveChanges();
+            return newUid;
+        }
+
+        /// <summary>
+        /// Translates the role string into a role enum.
+        /// </summary>
+        /// <param name="role">The role value as a string [ Professor | Student | Admin ]</param>
+        /// <returns>The role as an enum.</returns>
+        Role GetRole(string role)
+        {
+          if (role == "Administrator") {
+            return Role.Admin;
+          } else if (role == "Professor") { 
+            return Role.Professor; 
+          }
+
+          return Role.Student;
         }
 
         /*******End code to modify********/
