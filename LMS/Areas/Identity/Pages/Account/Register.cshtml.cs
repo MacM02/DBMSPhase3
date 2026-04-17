@@ -25,6 +25,7 @@ using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using LMS.Enums;
 
 namespace LMS.Areas.Identity.Pages.Account
 {
@@ -185,14 +186,6 @@ namespace LMS.Areas.Identity.Pages.Account
 
         /*******Begin code to modify********/
 
-        // role as an internal int
-        public enum Role
-        {
-          Admin,
-          Professor,
-          Student
-        }
-
         /// <summary>
         /// Create a new user of the LMS with the specified information and add it to the database.
         /// Assigns the user a unique uID consisting of a 'u' followed by 7 digits.
@@ -218,16 +211,16 @@ namespace LMS.Areas.Identity.Pages.Account
             string maxUid = uids.Max();
             string newUid = maxUid == null ? "u0000001" : "u" + (int.Parse(maxUid) + 1).ToString("D7");
 
-            Role r = GetRole(role);
+            Roles r = GetRole(role);
             switch(r)
             {
-            case Role.Admin:
+            case Roles.Administrator:
               db.Admins.Add(new Admin { UId=newUid, FName=firstName, LName=lastName, Dob=DateOnly.FromDateTime(DOB) });
               break;
-            case Role.Professor:
+            case Roles.Professor:
               db.Professors.Add(new Professor { UId=newUid, FName=firstName, LName=lastName, Dob=DateOnly.FromDateTime(DOB), Subject=departmentAbbrev });
               break;
-            case Role.Student:
+            case Roles.Student:
               db.Students.Add(new Student { UId=newUid, FName=firstName, LName=lastName, Dob=DateOnly.FromDateTime(DOB), Subject=departmentAbbrev });
               break;
             }
@@ -237,19 +230,19 @@ namespace LMS.Areas.Identity.Pages.Account
         }
 
         /// <summary>
-        /// Translates the role string into a role enum.
+        /// Completely unnecessary string -> enum conversion.
         /// </summary>
         /// <param name="role">The role value as a string [ Professor | Student | Admin ]</param>
         /// <returns>The role as an enum.</returns>
-        Role GetRole(string role)
+        Roles GetRole(string role)
         {
           if (role == "Administrator") {
-            return Role.Admin;
-          } else if (role == "Professor") { 
-            return Role.Professor; 
+            return Roles.Administrator;
+          } else if (role == "Professor") {
+            return Roles.Professor; 
           }
 
-          return Role.Student;
+          return Roles.Student;
         }
 
         /*******End code to modify********/

@@ -6,6 +6,8 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using LMS.Models.LMSModels;
 using Microsoft.AspNetCore.Mvc;
+using LMS.Models.HelperModels;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 // For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 [assembly: InternalsVisibleTo( "LMSControllerTests" )]
@@ -29,8 +31,15 @@ namespace LMS.Controllers
         /// </summary>
         /// <returns>The JSON array</returns>
         public IActionResult GetDepartments()
-        {            
-            return Json(null);
+        {
+            var query = from d in db.Departments
+                        select new Department
+                        {
+                          Name = d.Name,
+                          Subject = d.Subject
+                        };
+
+            return Json(query.ToArray());
         }
 
 
@@ -47,8 +56,21 @@ namespace LMS.Controllers
         /// </summary>
         /// <returns>The JSON array</returns>
         public IActionResult GetCatalog()
-        {            
-            return Json(null);
+        {
+            var query = from d in db.Departments
+                        select new SimpleDepartment
+                        {
+                          subject = d.Subject,
+                          dname = d.Name,
+                          courses = (from c in db.Courses
+                                     where c.Subject == d.Subject
+                                     select new SimpleCourse {
+                                       number = c.Num,
+                                       cname = c.Name
+                                     }).ToList()
+                        };
+
+            return Json(query.ToArray());
         }
 
         /// <summary>
@@ -66,8 +88,30 @@ namespace LMS.Controllers
         /// <param name="number">The course number, as in 5530</param>
         /// <returns>The JSON array</returns>
         public IActionResult GetClassOfferings(string subject, int number)
-        {            
-            return Json(null);
+        {
+
+            var query = from co in db.Courses
+                        where co.Num == number && co.Subject == subject
+                        select new
+                        {
+                          classes = (from cl in db.Classes
+                                     where cl.CourseId == co.CourseId
+                                     let professor = (from p in db.Professors
+                                                      where p.UId == cl.PuId select p)
+                                                     .FirstOrDefault()
+                                     select new
+                                     {
+                                       season = cl.Season,
+                                       year = cl.Year,
+                                       location = cl.Loc,
+                                       start = cl.Start,
+                                       end = cl.End,
+                                       fname = professor.FName,
+                                       lname = professor.LName,
+                                    }).ToList()
+                        };
+
+            return Json(query.ToArray());
         }
 
         /// <summary>
