@@ -8,6 +8,7 @@ using LMS.Models.LMSModels;
 using Microsoft.AspNetCore.Mvc;
 using LMS.Models.HelperModels;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Diagnostics.CodeAnalysis;
 
 // For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 [assembly: InternalsVisibleTo( "LMSControllerTests" )]
@@ -58,13 +59,13 @@ namespace LMS.Controllers
         public IActionResult GetCatalog()
         {
             var query = from d in db.Departments
-                        select new SimpleDepartment
+                        select new
                         {
                           subject = d.Subject,
                           dname = d.Name,
                           courses = (from c in db.Courses
                                      where c.Subject == d.Subject
-                                     select new SimpleCourse {
+                                     select new {
                                        number = c.Num,
                                        cname = c.Name
                                      }).ToList()
@@ -89,26 +90,20 @@ namespace LMS.Controllers
         /// <returns>The JSON array</returns>
         public IActionResult GetClassOfferings(string subject, int number)
         {
-
-            var query = from co in db.Courses
-                        where co.Num == number && co.Subject == subject
+            var query = from cl in db.Classes
+                        where cl.Course.Num == number && cl.Course.Subject == subject
+                        let professor = (from p in db.Professors
+                                         where p.UId == cl.PuId
+                                         select p).FirstOrDefault()
                         select new
                         {
-                          classes = (from cl in db.Classes
-                                     where cl.CourseId == co.CourseId
-                                     let professor = (from p in db.Professors
-                                                      where p.UId == cl.PuId select p)
-                                                     .FirstOrDefault()
-                                     select new
-                                     {
-                                       season = cl.Season,
-                                       year = cl.Year,
-                                       location = cl.Loc,
-                                       start = cl.Start,
-                                       end = cl.End,
-                                       fname = professor.FName,
-                                       lname = professor.LName,
-                                    }).ToList()
+                          season = cl.Season,
+                          year = cl.Year,
+                          location = cl.Loc,
+                          start = cl.Start,
+                          end = cl.End,
+                          fname = professor.FName,
+                          lname = professor.LName
                         };
 
             return Json(query.ToArray());
@@ -127,8 +122,9 @@ namespace LMS.Controllers
         /// <param name="asgname">The name of the assignment in the category</param>
         /// <returns>The assignment contents</returns>
         public IActionResult GetAssignmentContents(string subject, int num, string season, int year, string category, string asgname)
-        {            
-            return Content("");
+        {
+            var contents = GetAssignment(subject, num, season, year, category, asgname)?.Contents;
+            return Content(contents ?? "");
         }
 
 
@@ -147,7 +143,12 @@ namespace LMS.Controllers
         /// <param name="uid">The uid of the student who submitted it</param>
         /// <returns>The submission text</returns>
         public IActionResult GetSubmissionText(string subject, int num, string season, int year, string category, string asgname, string uid)
-        {            
+        {
+            var submissions = GetAssignment(subject, num, season, year, category, asgname)?.Submissions;
+            foreach (Submission s in submissions)
+            {
+              if (s.Student.UId == uid) return Content(s.Contents);
+            }
             return Content("");
         }
 
@@ -169,8 +170,70 @@ namespace LMS.Controllers
         /// or an object containing {success: false} if the user doesn't exist
         /// </returns>
         public IActionResult GetUser(string uid)
-        {           
+        {
+            var admin = (from a in db.Admins
+                           where a.UId == uid
+                           select new
+                           {
+                             fname = a.FName,
+                             lname = a.LName,
+                             uid = a.UId
+                           }).FirstOrDefault();
+
+            if (admin != null) return Json(admin);
+
+            var prof = (from p in db.Professors
+                          where p.UId == uid
+                          select new
+                          {
+                            fname = p.FName,
+                            lname = p.LName,
+                            uid = p.UId,
+                            department = p.Subject
+                          }).FirstOrDefault();
+
+            if (prof != null) return Json(prof);
+
+            var student = (from s in db.Students
+                             where s.UId == uid
+                             select new
+                             {
+                               fname = s.FName,
+                               lname = s.LName,
+                               uid = s.UId,
+                               department = s.Subject
+                             }).FirstOrDefault();
+
+            if (student != null) return Json(student);
+
             return Json(new { success = false });
+
+        }
+
+
+        /// <summary>
+        /// Retrieves an Assignment entry from the DB.
+        /// </summary>
+        /// <param name="subject">The course subject abbreviation</param>
+        /// <param name="num">The course number</param>
+        /// <param name="season">The season part of the semester for the class the assignment belongs to</param>
+        /// <param name="year">The year part of the semester for the class the assignment belongs to</param>
+        /// <param name="category">The name of the assignment category in the class</param>
+        /// <param name="asgname">The name of the assignment in the category</param>
+        /// <returns></returns>
+        public Assignment? GetAssignment(string subject, int num, string season, int year, string category, string asgname)
+        {
+            var assignment = (from co in db.Courses
+                           where co.Num == num && co.Subject == subject
+                           from cl in co.Classes
+                           where cl.Season == season && cl.Year == year
+                           from ac in cl.AssignmentCategories
+                           where ac.Name == category
+                           from a in ac.Assignments
+                           where a.Name == asgname
+                           select a).FirstOrDefault();
+
+            return assignment;
         }
 
 
