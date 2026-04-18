@@ -99,8 +99,8 @@ public class ProfessorController : Controller
         ViewData["uid"] = uid;
         return View();
     }
-
-    /*******Begin code to modify********/
+    
+/*******Begin code to modify********/
 
 
     /// <summary>
@@ -253,29 +253,35 @@ public class ProfessorController : Controller
     /// <returns>A JSON object containing success = true/false</returns>
     public IActionResult CreateAssignment(string subject, int num, string season, int year, string category, string asgname, int asgpoints, DateTime asgdue, string asgcontents)
     {
-      var cat = (from co in db.Courses
-                where co.Subject == subject && co.Num == num
-                from cl in co.Classes
-                where cl.Season == season && cl.Year == year
-                from ac in cl.AssignmentCategories
-                where ac.Name == category
-                select ac).FirstOrDefault();
+      var cl = GetClass(subject, num, season, year);
+      if (cl == null)
+        return Json(new { success = false });
 
+      var cat = cl.AssignmentCategories.FirstOrDefault(ac => ac.Name == category);
       if (cat == null)
         return Json(new { success = false });
 
-      bool exists = db.Assignments.Any(a => a.AcId == cat.AcId && a.Name == asgname);
+      bool exists = cat.Assignments.Any(a => a.Name == asgname);
       if (exists)
         return Json(new { success = false });
 
-      db.Assignments.Add(new Assignment
+      var newAsg = new Assignment
       {
         Name = asgname,
         Points = (uint)asgpoints,
         Due = DateOnly.FromDateTime(asgdue),
         Contents = asgcontents,
         AcId = cat.AcId
-      });
+      };
+
+      db.Assignments.Add(newAsg);
+      cat.Assignments.Add(newAsg);
+
+      foreach (var enrollment in cl.Enrolleds)
+      {
+        UpdateStudentGrade(cl, enrollment.StudentId);
+      }
+
       db.SaveChanges();
       return Json(new { success = true });
 
@@ -333,13 +339,20 @@ public class ProfessorController : Controller
     /// <returns>A JSON object containing success = true/false</returns>
     public IActionResult GradeSubmission(string subject, int num, string season, int year, string category, string asgname, string uid, int score)
     {
-      var assignment = GetAssignment(subject, num, season, year, category, asgname);
+      var cl = GetClass(subject, num, season, year);
+      if (cl == null)
+        return Json(new { success = false });
+
+      var cat = cl.AssignmentCategories.FirstOrDefault(ac => ac.Name == category);
+      var assignment = cat?.Assignments.FirstOrDefault(a => a.Name == asgname);
       var submission = assignment?.Submissions.FirstOrDefault(s => s.StudentId == uid);
 
       if (submission == null)
         return Json(new { success = false });
 
       submission.Score = (uint)score;
+      UpdateStudentGrade(cl, uid);
+
       db.SaveChanges();
       return Json(new { success = true });
     }
@@ -429,6 +442,63 @@ public class ProfessorController : Controller
                          .ThenInclude(s => s.Student)
                      .FirstOrDefault();
       return assignment;
+    }
+
+    private void UpdateStudentGrade(Class cl, string uid)
+    {
+        var enrollment = cl.Enrolleds.FirstOrDefault(e => e.StudentId == uid);
+        if (enrollment == null) return;
+
+        double totalScaledScore = 0;
+        double totalWeight = 0;
+
+        foreach (var cat in cl.AssignmentCategories)
+        {
+            if (!cat.Assignments.Any()) continue;
+
+            double catMax = 0;
+            double catEarned = 0;
+
+            foreach (var asg in cat.Assignments)
+            {
+                catMax += asg.Points;
+                var sub = asg.Submissions.FirstOrDefault(s => s.StudentId == uid);
+                catEarned += sub?.Score ?? 0;
+            }
+
+            if (catMax > 0)
+            {
+                totalScaledScore += (catEarned / catMax) * cat.Weight;
+                totalWeight += cat.Weight;
+            }
+        }
+
+        if (totalWeight == 0)
+        {
+            enrollment.Grade = "--";
+        }
+        else
+        {
+            double factor = 100.0 / totalWeight;
+            double finalPercent = totalScaledScore * factor;
+            enrollment.Grade = GetLetterGrade(finalPercent);
+        }
+    }
+
+    private string GetLetterGrade(double percent)
+    {
+        if (percent >= 93) return "A";
+        if (percent >= 90) return "A-";
+        if (percent >= 87) return "B+";
+        if (percent >= 83) return "B";
+        if (percent >= 80) return "B-";
+        if (percent >= 77) return "C+";
+        if (percent >= 73) return "C";
+        if (percent >= 70) return "C-";
+        if (percent >= 67) return "D+";
+        if (percent >= 63) return "D";
+        if (percent >= 60) return "D-";
+        return "E";
     }
 
 
