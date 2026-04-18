@@ -1,9 +1,10 @@
-﻿using System;
+﻿using LMS.Models.LMSModels;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using LMS.Models.LMSModels;
-using Microsoft.AspNetCore.Mvc;
 
 // For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 [assembly: InternalsVisibleTo( "LMSControllerTests" )]
@@ -228,7 +229,10 @@ namespace LMS.Controllers
                       where ac.Name == category
                       from a in ac.Assignments
                       where a.Name == asgname
-                      select a).FirstOrDefault();
+                      select a)
+                      .Include(a => a.Submissions)
+                        .ThenInclude(s => s.Student)
+                      .FirstOrDefault();
       return assignment;
     }
 

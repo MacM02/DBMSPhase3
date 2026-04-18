@@ -1,12 +1,13 @@
-﻿using System;
+﻿using LMS.Models.LMSModels;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading.Tasks;
-using LMS.Models.LMSModels;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 
 // For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 [assembly: InternalsVisibleTo( "LMSControllerTests" )]
@@ -221,8 +222,11 @@ public class ProfessorController : Controller
       if (currClass == null)
           return Json( new {success = false} );
 
-      if (currClass.AssignmentCategories.Any( ac => ac.Name == category))
-          return Json( new {success = false} );
+      bool exists = db.AssignmentCategories.Any(ac => ac.ClassId == currClass.ClassId && ac.Name == category);
+      if (exists)
+        return Json(new { success = false });
+      //if (currClass.AssignmentCategories.Any( ac => ac.Name == category))
+      //    return Json( new {success = false} );
 
       db.AssignmentCategories.Add(new AssignmentCategory {
           Name      = category,
@@ -257,7 +261,11 @@ public class ProfessorController : Controller
                 where ac.Name == category
                 select ac).FirstOrDefault();
 
-      if (cat == null || cat.Assignments.Any(a => a.Name == asgname))
+      if (cat == null)
+        return Json(new { success = false });
+
+      bool exists = db.Assignments.Any(a => a.AcId == cat.AcId && a.Name == asgname);
+      if (exists)
         return Json(new { success = false });
 
       db.Assignments.Add(new Assignment
@@ -350,16 +358,18 @@ public class ProfessorController : Controller
     /// <returns>The JSON array</returns>
     public IActionResult GetMyClasses(string uid)
     {
-      var query = from cl in db.Classes
+      var query = (from cl in db.Classes
                   where cl.PuId == uid
-                  select new
+                  select cl)
+                  .Include(cl => cl.Course)
+                  .Select(cl => new 
                   {
                     subject = cl.Course.Subject,
                     number = cl.Course.Num,
                     name = cl.Course.Name,
                     season = cl.Season,
                     year = cl.Year
-                  };
+                  });
 
       return Json(query.ToArray());
     }
@@ -377,12 +387,19 @@ public class ProfessorController : Controller
     /// <returns>A class object if it exists--otherwise null.</returns>
     public Class? GetClass(string subject, int num, string season, int year)
     {
+
       var foundClass = (
-          from co in db.Courses
-          where co.Subject == subject && co.Num == num
-          from cl in co.Classes
-          where cl.Year == year && cl.Season == season
-          select cl).FirstOrDefault();
+        from co in db.Courses
+        where co.Subject == subject && co.Num == num
+        from cl in co.Classes
+        where cl.Year == year && cl.Season == season
+        select cl)
+        .Include(cl => cl.AssignmentCategories)
+            .ThenInclude(ac => ac.Assignments)
+                .ThenInclude(a => a.Submissions)
+        .Include(cl => cl.Enrolleds)
+            .ThenInclude(e => e.Student)
+        .FirstOrDefault();
 
       return foundClass;
     }
@@ -400,14 +417,17 @@ public class ProfessorController : Controller
     public Assignment? GetAssignment(string subject, int num, string season, int year, string category, string asgname)
     {
       var assignment = (from co in db.Courses
-              where co.Subject == subject && co.Num == num
-              from cl in co.Classes
-              where cl.Season == season && cl.Year == year
-              from ac in cl.AssignmentCategories
-              where ac.Name == category
-              from a in ac.Assignments
-              where a.Name == asgname
-              select a).FirstOrDefault();
+                        where co.Subject == subject && co.Num == num
+                        from cl in co.Classes
+                        where cl.Season == season && cl.Year == year
+                        from ac in cl.AssignmentCategories
+                        where ac.Name == category
+                        from a in ac.Assignments
+                        where a.Name == asgname
+                        select a)
+                     .Include(a => a.Submissions)
+                         .ThenInclude(s => s.Student)
+                     .FirstOrDefault();
       return assignment;
     }
 
