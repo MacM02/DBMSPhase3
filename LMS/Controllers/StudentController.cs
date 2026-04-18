@@ -109,27 +109,27 @@ namespace LMS.Controllers
         /// <returns>The JSON array</returns>
         public IActionResult GetAssignmentsInClass(string subject, int num, string season, int year, string uid)
         {
+            var query = from cl in db.Classes
+                        join co in db.Courses on cl.CourseId equals co.CourseId
+                        join ac in db.AssignmentCategories on cl.ClassId equals ac.ClassId
+                        join a in db.Assignments on ac.AcId equals a.AcId
+                        join sub in db.Submissions
+                        on new { A = a.AssignmentId, B = uid } equals new { A = sub.AssignmentId, B = sub.StudentId }
+                        into joinedSubs
+                        from s in joinedSubs.DefaultIfEmpty()
+                        where co.Subject == subject
+                           && co.Num == num
+                           && cl.Season == season
+                           && cl.Year == year
+                        select new
+                        {
+                            aname = a.Name,
+                            cname = ac.Name,
+                            due = a.Due,
+                            score = s == null ? (uint?)null : s.Score
+                        };
 
-            var assignments = from cl in db.Classes
-                              join co in db.Courses on cl.CourseId equals co.CourseId
-                              join ac in db.AssignmentCategories on cl.ClassId equals ac.ClassId
-                              join a in db.Assignments on ac.AcId equals a.AcId
-                              join sub in db.Submissions.Where(s => s.StudentId == uid)
-                                  on a.AssignmentId equals sub.AssignmentId into subs
-                              from sub in subs.DefaultIfEmpty()
-                              where co.Subject == subject
-                                 && co.Num == num
-                                 && cl.Season == season
-                                 && cl.Year == year
-                              select new
-                              {
-                                  aname = a.Name,
-                                  cname = ac.Name,
-                                  due = a.Due,
-                                  score = sub == null ? (uint?)null : sub.Score
-                              };
-
-            return Json(assignments);
+            return Json(query.ToArray());
         }
 
 
